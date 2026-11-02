@@ -1,0 +1,124 @@
+@page "/posts/{Id:int}"
+@inject IPostService PostService
+@inject ICommentService CommentService
+@inject NavigationManager NavMgr
+
+<PageTitle>Post</PageTitle>
+
+@if (!string.IsNullOrEmpty(errorLabel))
+{
+    <p style="color: red">@errorLabel</p>
+}
+
+@if (post is null)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <h1>@post.Title</h1>
+    <p class="text-muted">By @post.Username</p>
+    <p>@post.Body</p>
+
+    <h3>Comments</h3>
+    @if (post.Comments.Count == 0)
+    {
+        <p>No comments yet.</p>
+    }
+    else
+    {
+        <ul class="list-group mb-3">
+            @foreach (CommentDto comment in post.Comments)
+            {
+                <li class="list-group-item">
+                    <strong>@comment.Username:</strong> @comment.Body
+                </li>
+            }
+        </ul>
+    }
+
+    <AuthorizeView>
+        <Authorized>
+            <div class="mb-2">
+                <label class="form-label">Add a comment</label>
+                <textarea class="form-control" rows="3" @bind="commentBody"></textarea>
+            </div>
+            <button class="btn btn-primary" @onclick="AddCommentAsync">Comment</button>
+        </Authorized>
+        <NotAuthorized>
+            <p><a href="login">Log in</a> to comment.</p>
+        </NotAuthorized>
+    </AuthorizeView>
+
+    <p class="mt-3"><a href="posts">Back to posts</a></p>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    [CascadingParameter] public Task<AuthenticationState> State { get; set; } = null!;
+
+    private PostWithCommentsDto? post;
+    private string commentBody = "";
+    private string errorLabel = "";
+    private int userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        AuthenticationState authState = await State;
+        ClaimsPrincipal principal = authState.User;
+        if (principal.Identity is not null && principal.Identity.IsAuthenticated)
+        {
+            userId = int.Parse(principal.Claims.Single(c => c.Type == "Id").Value);
+        }
+
+        await LoadAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (post is not null && post.Id != Id)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        errorLabel = "";
+        try
+        {
+            post = await PostService.GetSinglePostAsync(Id);
+        }
+        catch (Exception e)
+        {
+            errorLabel = $"Error: {e.Message}";
+        }
+    }
+
+    private async Task AddCommentAsync()
+    {
+        errorLabel = "";
+        if (string.IsNullOrWhiteSpace(commentBody))
+        {
+            errorLabel = "Comment cannot be empty.";
+            return;
+        }
+
+        try
+        {
+            await CommentService.AddCommentAsync(new CreateCommentDto
+            {
+                Body = commentBody,
+                PostId = Id,
+                UserId = userId
+            });
+            commentBody = "";
+            await LoadAsync();
+        }
+        catch (Exception e)
+        {
+            errorLabel = $"Error: {e.Message}";
+        }
+    }
+}

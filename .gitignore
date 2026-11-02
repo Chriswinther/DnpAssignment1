@@ -2,4 +2,9 @@ bin/
 obj/
 /packages/
 riderModule.iml
-/_ReSharper.Caches/.idea/
+/_ReSharper.Caches/
+.idea/
+*.json.bak
+WebApi/users.json
+WebApi/posts.json
+WebApi/comments.json

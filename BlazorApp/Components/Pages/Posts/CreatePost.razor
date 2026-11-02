@@ -1,0 +1,81 @@
+@page "/posts/create"
+@inject IPostService PostService
+@inject NavigationManager NavMgr
+
+<PageTitle>New post</PageTitle>
+
+<AuthorizeView>
+    <Authorized>
+        <h1>New post</h1>
+
+        <div class="mb-2">
+            <label class="form-label">Title</label>
+            <input class="form-control" type="text" @bind="title"/>
+        </div>
+
+        <div class="mb-2">
+            <label class="form-label">Body</label>
+            <textarea class="form-control" rows="6" @bind="body"></textarea>
+        </div>
+
+        @if (!string.IsNullOrEmpty(errorLabel))
+        {
+            <p style="color: red">@errorLabel</p>
+        }
+
+        <button class="btn btn-primary" @onclick="CreateAsync">Create</button>
+        <button class="btn btn-secondary" @onclick='() => NavMgr.NavigateTo("posts")'>Cancel</button>
+    </Authorized>
+    <NotAuthorized>
+        <h1>You shall not pass</h1>
+        <p>You have to log in before you can write a post.</p>
+        <a href="login">Go to login</a>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    [CascadingParameter] public Task<AuthenticationState> State { get; set; } = null!;
+
+    private string title = "";
+    private string body = "";
+    private string errorLabel = "";
+    private int userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        AuthenticationState authState = await State;
+        ClaimsPrincipal principal = authState.User;
+        if (principal.Identity is null || !principal.Identity.IsAuthenticated)
+        {
+            return;
+        }
+
+        string userIdAsString = principal.Claims.Single(c => c.Type == "Id").Value;
+        userId = int.Parse(userIdAsString);
+    }
+
+    private async Task CreateAsync()
+    {
+        errorLabel = "";
+        if (userId == 0)
+        {
+            errorLabel = "You have to be logged in.";
+            return;
+        }
+
+        try
+        {
+            PostDto created = await PostService.AddPostAsync(new CreatePostDto
+            {
+                Title = title,
+                Body = body,
+                UserId = userId
+            });
+            NavMgr.NavigateTo($"posts/{created.Id}");
+        }
+        catch (Exception e)
+        {
+            errorLabel = $"Error: {e.Message}";
+        }
+    }
+}

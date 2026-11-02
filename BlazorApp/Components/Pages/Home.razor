@@ -1,0 +1,18 @@
+@page "/"
+@inject NavigationManager NavMgr
+
+<PageTitle>Home</PageTitle>
+
+<h1>Forum</h1>
+
+<AuthorizeView>
+    <Authorized>
+        <p>Hello, @context.User.Identity?.Name</p>
+        <button class="btn btn-primary" @onclick='() => NavMgr.NavigateTo("posts")'>Browse posts</button>
+    </Authorized>
+    <NotAuthorized>
+        <p>You are not logged in.</p>
+        <button class="btn btn-primary" @onclick='() => NavMgr.NavigateTo("login")'>Log in</button>
+        <button class="btn btn-secondary" @onclick='() => NavMgr.NavigateTo("users/create")'>Create user</button>
+    </NotAuthorized>
+</AuthorizeView>

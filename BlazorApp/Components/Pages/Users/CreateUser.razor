@@ -1,0 +1,58 @@
+@page "/users/create"
+@inject IUserService UserService
+@inject NavigationManager NavMgr
+
+<PageTitle>Create user</PageTitle>
+
+<h1>Create user</h1>
+
+<div class="mb-2">
+    <label class="form-label">User name</label>
+    <input class="form-control" type="text" @bind="username"/>
+</div>
+
+<div class="mb-2">
+    <label class="form-label">Password</label>
+    <input class="form-control" type="password" @bind="password"/>
+</div>
+
+@if (!string.IsNullOrEmpty(errorLabel))
+{
+    <p style="color: red">@errorLabel</p>
+}
+
+@if (!string.IsNullOrEmpty(resultLabel))
+{
+    <p style="color: green">@resultLabel</p>
+}
+
+<button class="btn btn-primary" @onclick="CreateAsync">Create</button>
+<button class="btn btn-secondary" @onclick='() => NavMgr.NavigateTo("login")'>Go to login</button>
+
+@code {
+    private string username = "";
+    private string password = "";
+    private string errorLabel = "";
+    private string resultLabel = "";
+
+    private async Task CreateAsync()
+    {
+        errorLabel = "";
+        resultLabel = "";
+        try
+        {
+            UserDto created = await UserService.AddUserAsync(new CreateUserDto
+            {
+                Username = username,
+                Password = password
+            });
+            resultLabel = $"User '{created.Username}' created with id {created.Id}.";
+            username = "";
+            password = "";
+        }
+        catch (Exception e)
+        {
+            errorLabel = $"Error: {e.Message}";
+        }
+    }
+}
