@@ -1,6 +1,7 @@
-﻿using ApiContracts.Comments;
+using ApiContracts.Comments;
 using Entities;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using RepositoryContracts;
 
 namespace WebApi.Controllers;
@@ -28,12 +29,15 @@ public class CommentsController : ControllerBase
             return BadRequest("Body cannot be empty.");
         }
 
-        if (!postRepo.GetManyAsync().Any(p => p.Id == request.PostId))
+        bool postExists = await postRepo.GetManyAsync().AnyAsync(p => p.Id == request.PostId);
+        if (!postExists)
         {
             return BadRequest($"No post with id {request.PostId}.");
         }
 
-        if (!userRepo.GetManyAsync().Any(u => u.Id == request.UserId))
+        User? author = await userRepo.GetManyAsync()
+            .SingleOrDefaultAsync(u => u.Id == request.UserId);
+        if (author is null)
         {
             return BadRequest($"No user with id {request.UserId}.");
         }
@@ -46,13 +50,27 @@ public class CommentsController : ControllerBase
         };
 
         Comment created = await commentRepo.AddAsync(comment);
-        CommentDto dto = ToDto(created);
+
+        CommentDto dto = new CommentDto
+        {
+            Id = created.Id,
+            Body = created.Body,
+            PostId = created.PostId,
+            UserId = created.UserId,
+            Username = author.Username
+        };
+
         return Created($"/Comments/{dto.Id}", dto);
     }
 
     [HttpPut("{id:int}")]
     public async Task<ActionResult<CommentDto>> UpdateComment([FromRoute] int id, [FromBody] UpdateCommentDto request)
     {
+        if (string.IsNullOrWhiteSpace(request.Body))
+        {
+            return BadRequest("Body cannot be empty.");
+        }
+
         Comment existing;
         try
         {
@@ -63,60 +81,78 @@ public class CommentsController : ControllerBase
             return NotFound($"Comment with id {id} not found.");
         }
 
-        if (string.IsNullOrWhiteSpace(request.Body))
-        {
-            return BadRequest("Body cannot be empty.");
-        }
-
         existing.Body = request.Body;
-
         await commentRepo.UpdateAsync(existing);
-        return Ok(ToDto(existing));
+
+        CommentDto? dto = await commentRepo.GetManyAsync()
+            .Where(c => c.Id == id)
+            .Select(c => new CommentDto
+            {
+                Id = c.Id,
+                Body = c.Body,
+                PostId = c.PostId,
+                UserId = c.UserId,
+                Username = c.User.Username
+            })
+            .FirstOrDefaultAsync();
+
+        return Ok(dto);
     }
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<CommentDto>> GetSingleComment([FromRoute] int id)
     {
-        try
-        {
-            Comment comment = await commentRepo.GetSingleAsync(id);
-            return Ok(ToDto(comment));
-        }
-        catch (InvalidOperationException)
-        {
-            return NotFound($"Comment with id {id} not found.");
-        }
+        CommentDto? dto = await commentRepo.GetManyAsync()
+            .Where(c => c.Id == id)
+            .Select(c => new CommentDto
+            {
+                Id = c.Id,
+                Body = c.Body,
+                PostId = c.PostId,
+                UserId = c.UserId,
+                Username = c.User.Username
+            })
+            .FirstOrDefaultAsync();
+
+        return dto is null ? NotFound($"Comment with id {id} not found.") : Ok(dto);
     }
 
     [HttpGet]
-    public ActionResult<IEnumerable<CommentDto>> GetComments(
+    public async Task<ActionResult<IEnumerable<CommentDto>>> GetComments(
         [FromQuery] int? userId,
         [FromQuery] string? username,
         [FromQuery] int? postId)
     {
-        IQueryable<Comment> comments = commentRepo.GetManyAsync();
+        IQueryable<Comment> query = commentRepo.GetManyAsync();
 
         if (userId.HasValue)
         {
-            comments = comments.Where(c => c.UserId == userId.Value);
+            query = query.Where(c => c.UserId == userId.Value);
         }
 
         if (!string.IsNullOrWhiteSpace(username))
         {
-            List<int> matchingUserIds = userRepo.GetManyAsync()
-                .Where(u => u.Username.ToLower().Contains(username.ToLower()))
-                .Select(u => u.Id)
-                .ToList();
-
-            comments = comments.Where(c => matchingUserIds.Contains(c.UserId));
+            string filter = username.ToLower();
+            query = query.Where(c => c.User.Username.ToLower().Contains(filter));
         }
 
         if (postId.HasValue)
         {
-            comments = comments.Where(c => c.PostId == postId.Value);
+            query = query.Where(c => c.PostId == postId.Value);
         }
 
-        List<CommentDto> result = comments.OrderBy(c => c.Id).Select(ToDto).ToList();
+        List<CommentDto> result = await query
+            .OrderBy(c => c.Id)
+            .Select(c => new CommentDto
+            {
+                Id = c.Id,
+                Body = c.Body,
+                PostId = c.PostId,
+                UserId = c.UserId,
+                Username = c.User.Username
+            })
+            .ToListAsync();
+
         return Ok(result);
     }
 
@@ -132,18 +168,5 @@ public class CommentsController : ControllerBase
         {
             return NotFound($"Comment with id {id} not found.");
         }
-    }
-
-    private CommentDto ToDto(Comment comment)
-    {
-        User? user = userRepo.GetManyAsync().SingleOrDefault(u => u.Id == comment.UserId);
-        return new CommentDto
-        {
-            Id = comment.Id,
-            Body = comment.Body,
-            PostId = comment.PostId,
-            UserId = comment.UserId,
-            Username = user is null ? string.Empty : user.Username
-        };
     }
 }

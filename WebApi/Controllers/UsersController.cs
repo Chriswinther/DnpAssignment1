@@ -1,6 +1,7 @@
-﻿using ApiContracts.Users;
+using ApiContracts.Users;
 using Entities;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using RepositoryContracts;
 
 namespace WebApi.Controllers;
@@ -29,7 +30,7 @@ public class UsersController : ControllerBase
             return BadRequest("Password cannot be empty.");
         }
 
-        if (UsernameTaken(request.Username))
+        if (await UsernameTakenAsync(request.Username))
         {
             return BadRequest($"Username '{request.Username}' is already taken.");
         }
@@ -41,8 +42,7 @@ public class UsersController : ControllerBase
         };
 
         User created = await userRepo.AddAsync(user);
-        UserDto dto = ToDto(created);
-        return Created($"/Users/{dto.Id}", dto);
+        return Created($"/Users/{created.Id}", ToDto(created));
     }
 
     [HttpPut("{id:int}")]
@@ -64,7 +64,7 @@ public class UsersController : ControllerBase
         }
 
         bool nameChanged = !request.Username.Equals(existing.Username, StringComparison.OrdinalIgnoreCase);
-        if (nameChanged && UsernameTaken(request.Username))
+        if (nameChanged && await UsernameTakenAsync(request.Username))
         {
             return BadRequest($"Username '{request.Username}' is already taken.");
         }
@@ -91,17 +91,18 @@ public class UsersController : ControllerBase
     }
 
     [HttpGet]
-    public ActionResult<IEnumerable<UserDto>> GetUsers([FromQuery] string? usernameContains)
+    public async Task<ActionResult<IEnumerable<UserDto>>> GetUsers([FromQuery] string? usernameContains)
     {
-        IQueryable<User> users = userRepo.GetManyAsync();
+        IQueryable<User> query = userRepo.GetManyAsync();
 
         if (!string.IsNullOrWhiteSpace(usernameContains))
         {
-            users = users.Where(u => u.Username.ToLower().Contains(usernameContains.ToLower()));
+            string filter = usernameContains.ToLower();
+            query = query.Where(u => u.Username.ToLower().Contains(filter));
         }
 
-        List<UserDto> result = users.OrderBy(u => u.Id).Select(ToDto).ToList();
-        return Ok(result);
+        List<User> users = await query.OrderBy(u => u.Id).ToListAsync();
+        return Ok(users.Select(ToDto).ToList());
     }
 
     [HttpDelete("{id:int}")]
@@ -118,10 +119,10 @@ public class UsersController : ControllerBase
         }
     }
 
-    private bool UsernameTaken(string username)
+    private async Task<bool> UsernameTakenAsync(string username)
     {
-        return userRepo.GetManyAsync()
-            .Any(u => u.Username.ToLower() == username.ToLower());
+        string lowered = username.ToLower();
+        return await userRepo.GetManyAsync().AnyAsync(u => u.Username.ToLower() == lowered);
     }
 
     private static UserDto ToDto(User user)

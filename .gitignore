@@ -8,3 +8,6 @@ riderModule.iml
 WebApi/users.json
 WebApi/posts.json
 WebApi/comments.json
+app.db
+*.db-shm
+*.db-wal
